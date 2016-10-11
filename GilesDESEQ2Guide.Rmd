@@ -1,0 +1,28 @@
+---
+title: "RNA-seq Differential Analysis with R"
+author: "| Benjamin King, PhD | bking@mdibl.org | Kyle Shank | kshank@mdibl.org |
+  \n"
+output:
+  html_document:
+    fig_caption: yes
+    theme: lumen
+    toc: yes
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+---
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.align='center')
+```
+***
+
+# Objective
+
+Previously, we had aligned a set of RNA-seq reads to the _Mycobacterium smegmatis_ MC2 155 genome assembly and performed a basic analysis, resulting in a table of counts. Now we will perform an analysis on this table of counts to detect differentially expressed genes. To do this, we will use the `DESeq2` package from Bioconductor in `R`. 
+
+***
+
+# Step 0: Installing `DESeq2`
+
+`DESeq2` is a package from [Bioconductor](https://www.bioconductor.org), an open source set of software tools in `R` for bioinformatics. If you don't already 
