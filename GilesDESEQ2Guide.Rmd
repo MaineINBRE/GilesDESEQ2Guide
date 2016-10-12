@@ -14,6 +14,7 @@ output:
 ---
 ```{r global_options, include=FALSE}
 knitr::opts_chunk$set(fig.align='center')
+library(DESeq2)
 ```
 ***
 
@@ -23,6 +24,110 @@ Previously, we had aligned a set of RNA-seq reads to the _Mycobacterium smegmati
 
 ***
 
-# Step 0: Installing `DESeq2`
+# Step 0: Required Libraries
 
-`DESeq2` is a package from [Bioconductor](https://www.bioconductor.org), an open source set of software tools in `R` for bioinformatics. If you don't already 
+`DESeq2` is a package from [Bioconductor](https://www.bioconductor.org), an open source set of software tools in `R` for bioinformatics. To install:
+
+```{r InstallThings, eval=FALSE}
+# If you have not installed Bioconductor, do so here!
+
+# source("https://biconductor.org/biocLite.R")
+# biocLite()
+
+# Once this is completed:
+biocLite("DESeq2")
+# You may then use library(DESeq2) for subsequent loads.
+```
+
+To see the vignette, or training materials, associated with the `DESeq2` package (highly recommended) use the following command:
+
+```{r findVignette, eval=FALSE}
+vignette("DESeq2")
+```
+
+***
+
+# Step 1: Preparing Data
+
+At this point, we should have three seperate datasets: `SRR647673_htseq.txt`, `SRR647674_htseq.txt`, and `RR647675_htseq.txt`. Load these into your working environment in R, then examine one of the files with the `head()` function.
+
+```{r Load Data, cache=TRUE}
+# Note: You will need to change the relative path to wherever you have downloaded these files.
+
+SRR647673 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647673_htseq.txt",head=FALSE)
+SRR647674 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647674_htseq.txt",head=FALSE)
+SRR647675 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt",head=FALSE)
+head(SRR647673)
+```
+
+As can be seen, each dataset contains two columns: _V1_, the identified gene, and _V2_, the count of reads that have been assigned to that read. Importantly, the count data here has not been normalized. Why? For DESeq2’s statistical model to hold, raw counts must be used as these allow for assessing the measurement precision correctly. It is important to never provide counts that were pre-normalized for sequencing depth/library size to `DESeq2`.
+
+We now need to merge these datasets to obtain a matrix of counts. Merges (or, more abstractly, joins) can be extraordinarily complicated tasks in different computational environment - `R` is no exception. To begin, it is always good practice to ensure that you have a common column (a "key") that is found across all datasets. Here, it is _V1_ (which we will rename "Gene" in the matrix). To ensure that these are indeed the same, we can use a logic statement. We will check to see if all elements of the `V1` column are the same across all three datasets.
+
+```{r checkLogic}
+all(SRR647673[,1]==SRR647674[,1]) && all(SRR647673[,1]==SRR647675[,1]) && all(SRR647674[,1]==SRR647675[,1])
+```
+
+Great! We can perform a merge. As we know that our key column is identical across the three datasets, our merge is trivial and can actually be performed via creating a new _data.frame_ object.
+
+```{r performMerge}
+countData<-data.frame(row.names =SRR647673[,1],SRR647673=SRR647673[,2],SRR647674=SRR647674[,2],SRR647675=SRR647675[,2])
+head(countData)
+```
+
+The class used by the `DESeq2` package to store the read counts is a _DESeqDataSet_ object, which extends the _Ranged-SummarizedExperiment_ class of the `SummarizedExperiment` package. This facilitates preparation steps and also downstream exploration of results. It is highly recommended to be come familiar with these object types, as they are used widely throughout the Bioconductor landscape in `R`.
+
+In practical terms, this means we need to create a dataset of meta data, and then merge both our _countData_ and _metaData_ into one _DESeqDataSet_ object. 
+  
+```{r makeMeta}
+(metaData<-data.frame(row.names = colnames(countData), condition = c("30MinPI","2point5HoursPI","Lysogen")))
+```
+
+We can now create our _DESeqDataSet_ object:
+
+```{r makeDESeqData}
+deseq.dat<- DESeqDataSetFromMatrix(countData = countData,
+                                   colData = metaData,
+                                   design = ~ condition)
+deseq.dat
+head(assay(deseq.dat))
+```
+
+As with `R`: there's more than one way to do things! If you'd like to short-cut the above manual steps, you can utilize the following commands below. Note that these commands will only work if your working directory is where the _.txt_ files are located.
+
+```{r SimplerMethod}
+sampleFiles<-grep("SRR",list.files(getwd()),value=TRUE)
+sampleCondition<-c("30MinPI","2point5HoursPI","Lysogen")
+sampleTable<-data.frame(sampleName=gsub("_htseq.txt","",sampleFiles),
+                        fileName = sampleFiles,
+                        condition=sampleCondition)
+deseq.dat2<-DESeqDataSetFromHTSeqCount(sampleTable=sampleTable,
+                                     directory = getwd(),
+                                     design= ~ condition)
+deseq.dat2
+head(assay(deseq.dat2))
+```
+
+***
+
+# Step 2: Using DESeq2
+
+The standard differential expression analysis steps are wrapped into a single function, `DESeq`. Results tables are generated using the function results, which extracts a results table with $\log_2$ fold changes, _p_ values and adjusted _p_ values. With no arguments to results, the results will be for the last variable in the design formula, and if this is a factor, the comparison will be the last level of this variable over the first level. Details about the comparison are printed to the console. The text, condition treated vs untreated, tells you that the estimates are of the logarithmic fold change log2(treated/untreated).
+
+```{r runDESeq2, cache=TRUE, results="hide"}
+# Run function. Note that this will return an error, as we do not have replicates or proper experimental design. Ignore this error in this case. 
+dds <- DESeq(deseq.dat,quiet=TRUE)
+# Output pairwise results
+res1 <- results(dds, contrast=c("condition","30MinPI","2point5HoursPI"))
+res2 <- results(dds, contrast=c("condition","30MinPI","Lysogen"))
+res3 <- results(dds, contrast=c("condition","2point5HoursPI","Lysogen"))
+```
+
+Our results now look something like this:
+
+```{r exampleResults}
+head(res.73.74)
+# If we wnat to order our results by the smallest adjusted p value:
+head(res.73.74[order(res.73.74$padj),])
+```
+

@@ -230,9 +230,163 @@ div.tocify {
 <p>Previously, we had aligned a set of RNA-seq reads to the <em>Mycobacterium smegmatis</em> MC2 155 genome assembly and performed a basic analysis, resulting in a table of counts. Now we will perform an analysis on this table of counts to detect differentially expressed genes. To do this, we will use the <code>DESeq2</code> package from Bioconductor in <code>R</code>.</p>
 <hr />
 </div>
-<div id="step-0-installing-deseq2" class="section level1">
-<h1>Step 0: Installing <code>DESeq2</code></h1>
-<p><code>DESeq2</code> is a package from <a href="https://www.bioconductor.org">Bioconductor</a>, an open source set of software tools in <code>R</code> for bioinformatics.</p>
+<div id="step-0-required-libraries" class="section level1">
+<h1>Step 0: Required Libraries</h1>
+<p><code>DESeq2</code> is a package from <a href="https://www.bioconductor.org">Bioconductor</a>, an open source set of software tools in <code>R</code> for bioinformatics. To install:</p>
+<pre class="r"><code># If you have not installed Bioconductor, do so here!
+
+# source(&quot;https://biconductor.org/biocLite.R&quot;)
+# biocLite()
+
+# Once this is completed:
+biocLite(&quot;DESeq2&quot;)
+# You may then use library(DESeq2) for subsequent loads.</code></pre>
+<p>To see the vignette, or training materials, associated with the <code>DESeq2</code> package (highly recommended) use the following command:</p>
+<pre class="r"><code>vignette(&quot;DESeq2&quot;)</code></pre>
+<hr />
+</div>
+<div id="step-1-preparing-data" class="section level1">
+<h1>Step 1: Preparing Data</h1>
+<p>At this point, we should have three seperate datasets: <code>SRR647673_htseq.txt</code>, <code>SRR647674_htseq.txt</code>, and <code>RR647675_htseq.txt</code>. Load these into your working environment in R, then examine one of the files with the <code>head()</code> function.</p>
+<pre class="r"><code># Note: You will need to change the relative path to wherever you have downloaded these files.
+
+SRR647673 &lt;- read.table(&quot;~/GitHub/GilesDESEQ2Guide/SRR647673_htseq.txt&quot;,head=FALSE)
+SRR647674 &lt;- read.table(&quot;~/GitHub/GilesDESEQ2Guide/SRR647674_htseq.txt&quot;,head=FALSE)
+SRR647675 &lt;- read.table(&quot;~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt&quot;,head=FALSE)
+head(SRR647673)</code></pre>
+<pre><code>##                    V1     V2
+## 1 gene:EBG00000994442 224696
+## 2 gene:EBG00000994444     19
+## 3 gene:EBG00000994446     18
+## 4 gene:EBG00000994448      7
+## 5 gene:EBG00000994450      0
+## 6 gene:EBG00000994451      6</code></pre>
+<p>As can be seen, each dataset contains two columns: <em>V1</em>, the identified gene, and <em>V2</em>, the count of reads that have been assigned to that read. Importantly, the count data here has not been normalized. Why? For DESeq2’s statistical model to hold, raw counts must be used as these allow for assessing the measurement precision correctly. It is important to never provide counts that were pre-normalized for sequencing depth/library size to <code>DESeq2</code>.</p>
+<p>We now need to merge these datasets to obtain a matrix of counts. Merges (or, more abstractly, joins) can be extraordinarily complicated tasks in different computational environment - <code>R</code> is no exception. To begin, it is always good practice to ensure that you have a common column (a “key”) that is found across all datasets. Here, it is <em>V1</em> (which we will rename “Gene” in the matrix). To ensure that these are indeed the same, we can use a logic statement. We will check to see if all elements of the <code>V1</code> column are the same across all three datasets.</p>
+<pre class="r"><code>all(SRR647673[,1]==SRR647674[,1]) &amp;&amp; all(SRR647673[,1]==SRR647675[,1]) &amp;&amp; all(SRR647674[,1]==SRR647675[,1])</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<p>Great! We can perform a merge. As we know that our key column is identical across the three datasets, our merge is trivial and can actually be performed via creating a new <em>data.frame</em> object.</p>
+<pre class="r"><code>countData&lt;-data.frame(row.names =SRR647673[,1],SRR647673=SRR647673[,2],SRR647674=SRR647674[,2],SRR647675=SRR647675[,2])
+head(countData)</code></pre>
+<pre><code>##                     SRR647673 SRR647674 SRR647675
+## gene:EBG00000994442    224696    334781    210473
+## gene:EBG00000994444        19       281       195
+## gene:EBG00000994446        18       580      1113
+## gene:EBG00000994448         7      4864      3416
+## gene:EBG00000994450         0       393      2436
+## gene:EBG00000994451         6       337       217</code></pre>
+<p>The class used by the <code>DESeq2</code> package to store the read counts is a <em>DESeqDataSet</em> object, which extends the <em>Ranged-SummarizedExperiment</em> class of the <code>SummarizedExperiment</code> package. This facilitates preparation steps and also downstream exploration of results. It is highly recommended to be come familiar with these object types, as they are used widely throughout the Bioconductor landscape in <code>R</code>.</p>
+<p>In practical terms, this means we need to create a dataset of meta data, and then merge both our <em>countData</em> and <em>metaData</em> into one <em>DESeqDataSet</em> object.</p>
+<pre class="r"><code>(metaData&lt;-data.frame(row.names = colnames(countData), condition = c(&quot;Sample One&quot;,&quot;Sample Two&quot;,&quot;Sample Three&quot;)))</code></pre>
+<pre><code>##              condition
+## SRR647673   Sample One
+## SRR647674   Sample Two
+## SRR647675 Sample Three</code></pre>
+<p>We can now create our <em>DESeqDataSet</em> object:</p>
+<pre class="r"><code>deseq.dat&lt;- DESeqDataSetFromMatrix(countData = countData,
+                                   colData = metaData,
+                                   design = ~ condition)
+deseq.dat</code></pre>
+<pre><code>## class: DESeqDataSet 
+## dim: 6853 3 
+## metadata(1): version
+## assays(1): counts
+## rownames(6853): gene:EBG00000994442 gene:EBG00000994444 ...
+##   gene:MSMEG_6946 gene:MSMEG_6947
+## rowData names(0):
+## colnames(3): SRR647673 SRR647674 SRR647675
+## colData names(1): condition</code></pre>
+<pre class="r"><code>head(assay(deseq.dat))</code></pre>
+<pre><code>##                     SRR647673 SRR647674 SRR647675
+## gene:EBG00000994442    224696    334781    210473
+## gene:EBG00000994444        19       281       195
+## gene:EBG00000994446        18       580      1113
+## gene:EBG00000994448         7      4864      3416
+## gene:EBG00000994450         0       393      2436
+## gene:EBG00000994451         6       337       217</code></pre>
+<p>As with <code>R</code>: there’s more than one way to do things! If you’d like to short-cut the above manual steps, you can utilize the following commands below. Note that these commands will only work if your working directory is where the <em>.txt</em> files are located.</p>
+<pre class="r"><code>sampleFiles&lt;-grep(&quot;SRR&quot;,list.files(getwd()),value=TRUE)
+sampleCondition&lt;-c(&quot;Sample One&quot;,&quot;Sample Two&quot;,&quot;Sample Three&quot;)
+sampleTable&lt;-data.frame(sampleName=gsub(&quot;_htseq.txt&quot;,&quot;&quot;,sampleFiles),
+                        fileName = sampleFiles,
+                        condition=sampleCondition)
+deseq.dat2&lt;-DESeqDataSetFromHTSeqCount(sampleTable=sampleTable,
+                                     directory = getwd(),
+                                     design= ~ condition)
+deseq.dat2</code></pre>
+<pre><code>## class: DESeqDataSet 
+## dim: 6853 3 
+## metadata(1): version
+## assays(1): counts
+## rownames(6853): gene:EBG00000994442 gene:EBG00000994444 ...
+##   gene:MSMEG_6946 gene:MSMEG_6947
+## rowData names(0):
+## colnames(3): SRR647673 SRR647674 SRR647675
+## colData names(1): condition</code></pre>
+<pre class="r"><code>head(assay(deseq.dat2))</code></pre>
+<pre><code>##                     SRR647673 SRR647674 SRR647675
+## gene:EBG00000994442    224696    334781    210473
+## gene:EBG00000994444        19       281       195
+## gene:EBG00000994446        18       580      1113
+## gene:EBG00000994448         7      4864      3416
+## gene:EBG00000994450         0       393      2436
+## gene:EBG00000994451         6       337       217</code></pre>
+<hr />
+</div>
+<div id="step-2-using-deseq2" class="section level1">
+<h1>Step 2: Using DESeq2</h1>
+<p>The standard differential expression analysis steps are wrapped into a single function, <code>DESeq</code>. Results tables are generated using the function results, which extracts a results table with <span class="math inline">\(\log_2\)</span> fold changes, <em>p</em> values and adjusted <em>p</em> values. With no arguments to results, the results will be for the last variable in the design formula, and if this is a factor, the comparison will be the last level of this variable over the first level. Details about the comparison are printed to the console. The text, condition treated vs untreated, tells you that the estimates are of the logarithmic fold change log2(treated/untreated).</p>
+<pre class="r"><code># Run function. Note that this will return an error, as we do not have replicates or proper experimental design. Ignore this error in this case. 
+dds &lt;- DESeq(deseq.dat,quiet=TRUE)</code></pre>
+<pre><code>## Warning in checkForExperimentalReplicates(object, modelMatrix): same number of samples and coefficients to fit,
+##   estimating dispersion by treating samples as replicates.
+##   read the ?DESeq section on 'Experiments without replicates'</code></pre>
+<pre class="r"><code># Output pairwise results
+res.73.74 &lt;- results(dds, contrast=c(&quot;condition&quot;,&quot;Sample One&quot;,&quot;Sample Two&quot;))
+res.73.75 &lt;- results(dds, contrast=c(&quot;condition&quot;,&quot;Sample One&quot;,&quot;Sample Three&quot;))
+res.74.75 &lt;- results(dds, contrast=c(&quot;condition&quot;,&quot;Sample Two&quot;, &quot;Sample Three&quot;))</code></pre>
+<p>Our results now look something like this:</p>
+<pre class="r"><code>head(res.73.74)</code></pre>
+<pre><code>## log2 fold change (MAP): condition Sample One vs Sample Two 
+## Wald test p-value: condition Sample One vs Sample Two 
+## DataFrame with 6 rows and 6 columns
+##                         baseMean log2FoldChange     lfcSE        stat
+##                        &lt;numeric&gt;      &lt;numeric&gt; &lt;numeric&gt;   &lt;numeric&gt;
+## gene:EBG00000994442 509772.45294     1.88320973 0.9591098  1.96349759
+## gene:EBG00000994444    102.40724    -0.05317816 0.8239492 -0.06454059
+## gene:EBG00000994446    269.67357    -0.77191605 0.8906381 -0.86670001
+## gene:EBG00000994448   1155.72977    -2.10599350 0.9627715 -2.18742815
+## gene:EBG00000994450    394.27724    -0.71783687 0.9380448 -0.76524792
+## gene:EBG00000994451     87.99032    -1.26178043 0.9149299 -1.37910066
+##                         pvalue      padj
+##                      &lt;numeric&gt; &lt;numeric&gt;
+## gene:EBG00000994442 0.04958838 0.6929423
+## gene:EBG00000994444 0.94853979 0.9806955
+## gene:EBG00000994446 0.38610640 0.7347956
+## gene:EBG00000994448 0.02871128 0.6929423
+## gene:EBG00000994450 0.44412393 0.7639907
+## gene:EBG00000994451 0.16786372 0.6929423</code></pre>
+<pre class="r"><code># If we wnat to order our results by the smallest adjusted p value:
+head(res.73.74[order(res.73.74$padj),])</code></pre>
+<pre><code>## log2 fold change (MAP): condition Sample One vs Sample Two 
+## Wald test p-value: condition Sample One vs Sample Two 
+## DataFrame with 6 rows and 6 columns
+##                         baseMean log2FoldChange     lfcSE      stat
+##                        &lt;numeric&gt;      &lt;numeric&gt; &lt;numeric&gt; &lt;numeric&gt;
+## gene:EBG00000994442 5.097725e+05       1.883210 0.9591098  1.963498
+## gene:EBG00000994448 1.155730e+03      -2.105993 0.9627715 -2.187428
+## gene:EBG00000994451 8.799032e+01      -1.261780 0.9149299 -1.379101
+## gene:EBG00000994455 2.151512e+02      -1.988998 0.9629956 -2.065428
+## gene:EBG00000994459 1.649067e+06      -1.450399 0.8674950 -1.671939
+## gene:EBG00000994463 1.060970e+02      -1.248032 0.9627925 -1.296262
+##                         pvalue      padj
+##                      &lt;numeric&gt; &lt;numeric&gt;
+## gene:EBG00000994442 0.04958838 0.6929423
+## gene:EBG00000994448 0.02871128 0.6929423
+## gene:EBG00000994451 0.16786372 0.6929423
+## gene:EBG00000994455 0.03888256 0.6929423
+## gene:EBG00000994459 0.09453633 0.6929423
+## gene:EBG00000994463 0.19488512 0.6929423</code></pre>
 </div>
 
 
