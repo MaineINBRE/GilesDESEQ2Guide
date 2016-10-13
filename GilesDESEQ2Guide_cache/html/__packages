@@ -7,3 +7,6 @@ GenomicRanges
 Biobase
 SummarizedExperiment
 DESeq2
+pheatmap
+RColorBrewer
+airway
