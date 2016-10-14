@@ -10,3 +10,5 @@ DESeq2
 pheatmap
 RColorBrewer
 airway
+ggplot2
+ggthemes

@@ -14,6 +14,8 @@ output:
 ---
 ```{r global_options, include=FALSE}
 knitr::opts_chunk$set(fig.align='center')
+library(ggplot2)
+library(ggthemes)
 library(DESeq2)
 ```
 ***
@@ -60,7 +62,7 @@ SRR647675 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt",head=FAL
 head(SRR647673)
 ```
 
-As can be seen, each dataset contains two columns: _V1_, the identified gene, and _V2_, the count of reads that have been assigned to that read. Importantly, the count data here has not been normalized. Why? For `DESeq2`’s statistical model to hold, raw counts must be used as these allow for assessing the measurement precision correctly. It is important to never provide counts that were pre-normalized for sequencing depth/library size to `DESeq2`.
+As can be seen, `R` has automatically assigned a name to the two columns: _V1_, the identified gene, and _V2_, the count of reads that have been assigned to that read. Of importance is the fact that the count data here has not been normalized. Why? For `DESeq2`’s statistical model to hold, raw counts must be used as these allow for assessing the measurement precision correctly. It is important to never provide counts that were pre-normalized for sequencing depth/library size to `DESeq2`.
 
 We now need to merge these datasets to obtain a matrix of counts. Merges (or, more abstractly, joins) can be extraordinarily complicated tasks in different computational environment - `R` is no exception. To begin, it is always good practice to ensure that you have a common column (a "key") that is found across all datasets. Here, it is _V1_ (which we will rename "Gene" in the matrix). To ensure that these are indeed the same, we can use a logic statement. We will check to see if all elements of the `V1` column are the same across all three datasets.
 
@@ -226,7 +228,42 @@ data("airway")
 se <- airway
 dat<-DESeqDataSet(se, design = ~ cell + dex)
 ex<-DESeq(dat)
+exrl<-rlog(ex)
 rs<-results(ex)
 plotMA(rs,main="MA Plot of Airway Data",ylim=c(-4,4))
 ```
 
+Perhaps you want to highlight and label a random point on your plot?
+
+```{r makeLabel, cache=TRUE}
+plotMA(rs, main="MA Plot of Airway Data",ylim=c(-5,5))
+topGene <- rownames(rs)[which.min(rs$padj)]
+with(rs[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+```
+
+***
+
+## PCA Plot
+
+Another way to visualize sample-to-sample distances is a principal components analysis (PCA). Principal component analysis is a powerful tool from mathematical statistics: it underpins a lot of your daily experinece with predictive algorithms (like Netflix). A really good explanation of it is from [this](http://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues) question on Stack Exchange. Basically: data points are projected onto the 2D plane such that they spread out in the two directions that explain most of the differences. The x-axis is the direction that separates the data points the most. The values of the samples in this direction are written PC1. The y-axis is a direction that separates the data the second most. The values of the samples in this direction are written PC2. The percent of the total variance that is contained in the direction is printed in the axis label. Note that these percentages do not add to 100%, because there are more dimensions that contain the remaining variance (although each of these remaining dimensions will explain less than the two that we see).
+
+```{r makePCA, cache=TRUE}
+plotPCA(rld) + ggtitle("PCA Plot of rLog Data") + theme_few()
+```
+
+With our __airway__ dataset:
+
+```{r makePCA2, cache=TRUE}
+plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + theme_few()
+```
+
+***
+
+# Session Info
+
+```{r Session Info}
+sessionInfo()
+```
