@@ -251,6 +251,7 @@ with(rs[topGene, ], {
 Another way to visualize sample-to-sample distances is a principal components analysis (PCA). Principal component analysis is a powerful tool from mathematical statistics: it underpins a lot of your daily experinece with predictive algorithms (like Netflix). A really good explanation of it is from [this](http://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues) question on Stack Exchange. Basically: data points are projected onto the 2D plane such that they spread out in the two directions that explain most of the differences. The x-axis is the direction that separates the data points the most. The values of the samples in this direction are written PC1. The y-axis is a direction that separates the data the second most. The values of the samples in this direction are written PC2. The percent of the total variance that is contained in the direction is printed in the axis label. Note that these percentages do not add to 100%, because there are more dimensions that contain the remaining variance (although each of these remaining dimensions will explain less than the two that we see).
 
 ```{r makePCA, cache=TRUE}
+require(ggplot2,ggthemes)
 plotPCA(rld) + ggtitle("PCA Plot of rLog Data") + theme_few()
 ```
 
@@ -260,10 +261,4 @@ With our __airway__ dataset:
 plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + theme_few()
 ```
 
-***
 
-# Session Info
-
-```{r Session Info}
-sessionInfo()
-```
