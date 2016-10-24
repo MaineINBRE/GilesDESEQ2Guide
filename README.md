@@ -142,7 +142,7 @@ plot(assay(rld)[,2:3],
      pch=16, cex=0.3) 
 ```
 
-[](ScatterPlot.png)
+![](ScatterPlot.png)
 
 We can see how genes with low counts (bottom left-hand corner of the first two plots on the top row) seem to be excessively variable on the ordinary logarithmic scale, while the rlog transform compresses differences for the low count genes for which the data provide little information about differential expression.
 
@@ -185,7 +185,7 @@ pheatmap(sampleDistMatrix,
          main = "A Heatmap of Similarities Between Groups")
 ```
 
-[](HeatMap.png)
+![](HeatMap.png)
 ***
 
 ## MA Plot
@@ -196,7 +196,7 @@ The MA plot allows you to look at the relationship between intensity and differe
 plotMA(results(dds),main = "MA Plot of dds",ylim=c(-4,4))
 ```
 
-[](BoringMAPlot.png)
+![](BoringMAPlot.png)
 
 The default behavior of the `plotMA` function would be to highlight differentially expressed genes (as determined by the adjusted p-value). We can again confirm that we have none via the following method:
 
@@ -217,7 +217,7 @@ rs<-results(ex)
 plotMA(rs,main="MA Plot of Airway Data",ylim=c(-4,4))
 ```
 
-[](BetterMAPlot.png)
+![](BetterMAPlot.png)
 
 Perhaps you want to highlight and label a random point on your plot?
 
@@ -229,7 +229,7 @@ with(rs[topGene, ], {
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 ```
-[](MAplotwithlabel.png)
+![](MAplotwithlabel.png)
 ***
 
 ## PCA Plot
@@ -240,7 +240,7 @@ Another way to visualize sample-to-sample distances is a principal components an
 plotPCA(rld) + ggtitle("PCA Plot of rLog Data") + theme_few()
 ```
 
-[](PCAPlot.png)
+![](PCAPlot.png)
 
 With our __airway__ dataset:
 
@@ -248,6 +248,6 @@ With our __airway__ dataset:
 plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + theme_few()
 ```
 
-[](PCAPlot2.png)
+![](PCAPlot2.png)
 
 ***
