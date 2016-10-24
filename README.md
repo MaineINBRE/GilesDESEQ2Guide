@@ -1,1 +1,242 @@
-# GilesDESEQ2Guide
+
+# Using DESeq2 to Perform Basic Differential Expression Analysis 
+
+[Previously](https://github.com/kylescotshank/GilesRNASeqGuide), we have imported, aligned, and processed RNA-Seq data in Galaxy, resulting in a table of counts. Now we will perform an analysis on these data to detect differentially expressed genes. To do this, we will use the `DESeq2` package from Bioconductor in `R`. 
+
+***
+
+## Step 0: Required Libraries
+
+`DESeq2` is a package from [Bioconductor](https://www.bioconductor.org), an open source set of software tools in `R` for bioinformatics. To install:
+
+```{r InstallThings, eval=FALSE}
+# If you have not installed Bioconductor, do so here!
+
+# source("https://biconductor.org/biocLite.R")
+# biocLite()
+
+# Once this is completed:
+biocLite("DESeq2")
+# You may then use library(DESeq2) for subsequent loads.
+```
+
+To see the vignette, or training materials, associated with the `DESeq2` package (highly recommended) use the following command:
+
+```{r findVignette, eval=FALSE}
+vignette("DESeq2")
+```
+
+***
+
+## Step 1: Preparing Data
+
+At this point, we should have three seperate datasets: `SRR647673_htseq.txt`, `SRR647674_htseq.txt`, and `RR647675_htseq.txt`. Load these into your working environment in R, then examine one of the files with the `head()` function.
+
+```{r Load Data, cache=TRUE}
+# Note: You will need to change the relative path to wherever you have downloaded these files.
+
+SRR647673 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647673_htseq.txt",head=FALSE)
+SRR647674 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647674_htseq.txt",head=FALSE)
+SRR647675 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt",head=FALSE)
+head(SRR647673)
+```
+
+As can be seen, `R` has automatically assigned a name to the two columns: _V1_, the identified gene, and _V2_, the count of reads that have been assigned to that read. Of importance is the fact that the count data here has not been normalized. Why? For `DESeq2`’s statistical model to hold, raw counts must be used as these allow for assessing the measurement precision correctly. It is important to never provide counts that were pre-normalized for sequencing depth/library size to `DESeq2`.
+
+We now need to merge these datasets to obtain a matrix of counts. Merges (or, more abstractly, joins) can be extraordinarily complicated tasks in different computational environment - `R` is no exception. To begin, it is always good practice to ensure that you have a common column (a "key") that is found across all datasets. Here, it is _V1_ (which we will rename "Gene" in the matrix). To ensure that these are indeed the same, we can use a logic statement. We will check to see if all elements of the `V1` column are the same across all three datasets.
+
+```{r checkLogic}
+all(SRR647673[,1]==SRR647674[,1]) && all(SRR647673[,1]==SRR647675[,1]) && all(SRR647674[,1]==SRR647675[,1])
+```
+
+Great! We can perform a merge. There are ([literally](https://www.google.com/search?client=safari&rls=en&q=how+many+ways+to+merge+in+r&ie=UTF-8&oe=UTF-8#safe=off&q=how+to+merge+in+r)) a million ways to perform a merge in `R`. As we know that our key column is identical across the three datasets, our circumstances are trivial and can actually be performed easily via creating a new _data.frame_ object.
+
+```{r performMerge}
+countData<-data.frame(row.names =SRR647673[,1],SRR647673=SRR647673[,2],SRR647674=SRR647674[,2],SRR647675=SRR647675[,2])
+head(countData)
+```
+
+The class used by the `DESeq2` package to store the read counts is a _DESeqDataSet_ object, which extends the _Ranged-SummarizedExperiment_ class of the `SummarizedExperiment` package. This facilitates preparation steps and also downstream exploration of results. It is highly recommended to be come familiar with these object types (use `vignette(SummarizedExperiment)`), as they are used widely throughout the Bioconductor landscape in `R`.
+
+In practical terms, this means we need to create a dataset of meta data, and then merge both our _countData_ and _metaData_ into one _DESeqDataSet_ object. 
+  
+```{r makeMeta}
+(metaData<-data.frame(row.names = colnames(countData), condition = c("30MinPI","2point5HoursPI","Lysogen")))
+```
+
+We can now create our _DESeqDataSet_ object:
+
+```{r makeDESeqData}
+deseq.dat<- DESeqDataSetFromMatrix(countData = countData,
+                                   colData = metaData,
+                                   design = ~ condition)
+deseq.dat
+head(assay(deseq.dat))
+```
+
+As with `R`: there's more than one way to do things! If you'd like to short-cut the above manual steps, you can utilize the following commands below. Note that these commands will only work if your working directory is where the _.txt_ files are located.
+
+```{r SimplerMethod}
+sampleFiles<-grep("SRR",list.files(getwd()),value=TRUE)
+sampleCondition<-c("30MinPI","2point5HoursPI","Lysogen")
+sampleTable<-data.frame(sampleName=gsub("_htseq.txt","",sampleFiles),
+                        fileName = sampleFiles,
+                        condition=sampleCondition)
+deseq.dat2<-DESeqDataSetFromHTSeqCount(sampleTable=sampleTable,
+                                     directory = getwd(),
+                                     design= ~ condition)
+deseq.dat2
+head(assay(deseq.dat2))
+```
+
+***
+
+## Step 2: Using DESeq2
+
+The standard differential expression analysis steps are wrapped into a single function, `DESeq`. Results tables are generated using the function results, which extracts a results table with $\log_2$ fold changes, _p_ values and adjusted _p_ values. With no arguments to results, the results will be for the last variable in the design formula, and if this is a factor, the comparison will be the last level of this variable over the first level. Details about the comparison are printed to the console. The text, condition treated vs untreated, tells you that the estimates are of the logarithmic fold change log2(treated/untreated).
+
+```{r runDESeq2, cache=TRUE, results="hide"}
+dds <- DESeq(deseq.dat,quiet=TRUE)
+```
+
+Uh oh! You'll notice from the above that `DESeq2` has thrown an error. This isn't a programmatic error, but a more fundamental one related to experimental design. `DESeq2` is configured to work explicitly with experiments that have replication, Experiments without replicates do not allow for estimation of the dispersion of counts around the expected value for each group, which is critical for differential expression analysis. If an experimental design is supplied which does not contain the necessary degrees of freedom for differential analysis, `DESeq2` will angrily provide you the above error but continue it's calculations. However, all of the samples will now be considered as replicates of a single group for the estimation of dispersion. The `??DESeq2` function will tell you: "Some overestimation of the variance may be expected, which will make that approach conservative." This is a bit of an overstatement, as shown when you examine your pairwise data.
+
+```{r checkOutData, cache=TRUE}
+head(results(dds))
+summary(results(dds))
+```
+
+As you can see - we have found no differentially expressed genes due to our lack of statistical pwoer. For an interesting history on this topic, a look at [this](http://seqanswers.com/forums/showthread.php?t=31036) aging thread might be of value. 
+
+There is, however, a workaround for our particular case! Though we will not be able to assign _p_-values to any of our differentially expressed genes, we still have the capability of performing $\log_2$ transformations to check for absolute (and not statistical) differences in expression.
+
+```{r workAround, cache=TRUE}
+rld <- rlogTransformation(dds)
+res <- data.frame(
+   assay(rld))
+res$avgLogExpr <- ( res[,1]+res[,2]+res[,3] ) / 3
+res$LogFC.73.74 <- res$SRR647673 - res$SRR647674
+res$LogFC.73.75 <- res$SRR647673 - res$SRR647675
+res$LogFC.74.75 <- res$SRR647674 - res$SRR647675 
+head(res)
+```
+
+It's important to understand what the `rlogTransformation` function is doing. This function transforms the count data to the $\log_2$ scale in a way which minimizes differences between samples for rows with small counts, and which normalizes with respect to library size. It's called the regularized $\log_2$ transformation, and it's a method for variance stabilization. [This paper](http://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8) offers some pretty good clarification for why this is important. 
+
+Here's a good example of why the `rlog` transformation is appropriate:
+
+```{r exampleRLogPlots, cache=TRUE, results="hide"}
+par( mfrow = c( 2, 3 ) )
+ddplot <- estimateSizeFactors(dds)
+plot(log2(counts(dds, normalized=TRUE)[,1:2] + 1),
+     pch=16, cex=0.3) +
+plot(log2(counts(dds, normalized=TRUE)[,c(1,3)] + 1),
+     pch=16, cex=0.3, main = "Normal Log2") + 
+plot(log2(counts(dds, normalized=TRUE)[,2:3] + 1),
+     pch=16, cex=0.3) +
+plot(assay(rld)[,1:2],
+     pch=16, cex=0.3) +
+plot(assay(rld)[,c(1,3)],
+     pch=16, cex=0.3, main="Regularized Log2") +
+plot(assay(rld)[,2:3],
+     pch=16, cex=0.3) 
+```
+
+We can see how genes with low counts (bottom left-hand corner of the first two plots on the top row) seem to be excessively variable on the ordinary logarithmic scale, while the rlog transform compresses differences for the low count genes for which the data provide little information about differential expression.
+
+***
+
+## Step 3: Exploratory Data Analysis
+
+Exploratory data analysis (EDA) is an incredibly importat part of bioinformatics (and data analysis in general). There are many great resources on this topic available (like [this](exploratory data analysis with r), [this](http://www.stat.cmu.edu/~hseltman/309/Book/chapter4.pdf), and [this](data science with r)). Below are some of the more standardized tasks for differential analysis.
+
+***
+
+## Heat Map
+
+A useful first step in an RNA-seq analysis is often to assess overall similarity between samples: Which samples are similar to each other, which are different? Does this fit to the expectation from the experiment’s design? A good way to assess this is to find the [Euclidian](https://en.wikipedia.org/wiki/Euclidean_distance) (or sometimes [Poisson](https://arxiv.org/pdf/1202.6201.pdf)) distance and plot it with a heatmap. 
+
+To do this, we'll need a few extra libraries:
+
+```{r getMoreLibs}
+library("pheatmap")
+library("RColorBrewer")
+```
+
+We'll use the `dist` function to get the Euclidian distance on a transposed array.
+
+```{r getDists}
+sampleDists <- dist( t( assay(rld) ) )
+sampleDists
+```
+
+Then we simply convert to a matrix and plot.
+
+```{r make HeatMap}
+sampleDistMatrix <- as.matrix( sampleDists )
+# This is just to make the heatmap more attractive
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors,
+         main = "A Heatmap of Similarities Between Groups")
+```
+
+***
+
+## MA Plot
+
+The MA plot allows you to look at the relationship between intensity and difference between two different sets of data. More specifically, an MA-plot is a plot of log-intensity ratios (M-values) versus log-intensity averages (A-values). 
+
+```{r makeMAPlot}
+plotMA(results(dds),main = "MA Plot of dds",ylim=c(-4,4))
+```
+
+The default behavior of the `plotMA` function would be to highlight differentially expressed genes (as determined by the adjusted p-value). We can again confirm that we have none via the following method:
+
+```{r noDiffsHere}
+table(results(dds)[,"padj"]<0.1)
+```
+
+To see the standard (or expected) output of the `plotMA` function, we can use the _airway_ dataset.
+
+```{r makeExample, cache=TRUE}
+library("airway")
+data("airway")
+se <- airway
+dat<-DESeqDataSet(se, design = ~ cell + dex)
+ex<-DESeq(dat)
+exrl<-rlog(ex)
+rs<-results(ex)
+plotMA(rs,main="MA Plot of Airway Data",ylim=c(-4,4))
+```
+
+Perhaps you want to highlight and label a random point on your plot?
+
+```{r makeLabel, cache=TRUE}
+plotMA(rs, main="MA Plot of Airway Data",ylim=c(-5,5))
+topGene <- rownames(rs)[which.min(rs$padj)]
+with(rs[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+```
+
+***
+
+## PCA Plot
+
+Another way to visualize sample-to-sample distances is a principal components analysis (PCA). Principal component analysis is a powerful tool from mathematical statistics: it underpins a lot of your daily experinece with predictive algorithms (like Netflix). A really good explanation of it is from [this](http://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues) question on Stack Exchange. Basically: data points are projected onto the 2D plane such that they spread out in the two directions that explain most of the differences. The x-axis is the direction that separates the data points the most. The values of the samples in this direction are written PC1. The y-axis is a direction that separates the data the second most. The values of the samples in this direction are written PC2. The percent of the total variance that is contained in the direction is printed in the axis label. Note that these percentages do not add to 100%, because there are more dimensions that contain the remaining variance (although each of these remaining dimensions will explain less than the two that we see).
+
+```{r makePCA, cache=TRUE}
+plotPCA(rld) + ggtitle("PCA Plot of rLog Data") + theme_few()
+```
+
+With our __airway__ dataset:
+
+```{r makePCA2, cache=TRUE}
+plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + theme_few()
+```
+
+***
