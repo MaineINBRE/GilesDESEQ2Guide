@@ -1,7 +1,7 @@
 
 # Using DESeq2 to Perform Basic Differential Expression Analysis 
 
-[Previously](https://github.com/kylescotshank/GilesRNASeqGuide), we have imported, aligned, and processed RNA-Seq data in Galaxy, resulting in a table of counts. Now we will perform an analysis on these data to detect differentially expressed genes. To do this, we will use the `DESeq2` package from Bioconductor in `R`. 
+[Previously](https://github.com/kylescotshank/GilesRNASeqGuide), we had imported, aligned, and processed RNA-Seq data in Galaxy, resulting in a table of counts. Now we will perform an analysis on these data to detect differentially expressed genes. To do this, we will use the `DESeq2` package from Bioconductor in `R`. 
 
 ***
 
