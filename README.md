@@ -12,7 +12,7 @@
 ```{r InstallThings, eval=FALSE}
 # If you have not installed Bioconductor, do so here!
 
-# source("https://biconductor.org/biocLite.R")
+# source("https://bioconductor.org/biocLite.R")
 # biocLite()
 
 # Once this is completed:
