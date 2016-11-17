@@ -3,6 +3,8 @@
 
 [Previously](https://github.com/kylescotshank/GilesRNASeqGuide), we had imported, aligned, and processed RNA-Seq data in Galaxy, resulting in a table of counts. Now we will perform an analysis on these data to detect differentially expressed genes. To do this, we will use the `DESeq2` package from Bioconductor in `R`. 
 
+__If you'd like to be able to see the output of the commands below in `R`, please follow the link above to the RPubs page.__
+
 ***
 
 ## Step 0: Required Libraries
@@ -35,9 +37,9 @@ At this point, we should have three seperate datasets: `SRR647673_htseq.txt`, `S
 ```{r Load Data, cache=TRUE}
 # Note: You will need to change the relative path to wherever you have downloaded these files.
 
-SRR647673 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647673_htseq.txt",head=FALSE)
-SRR647674 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647674_htseq.txt",head=FALSE)
-SRR647675 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt",head=FALSE)
+SRR647673 <- read.table("SRR647673_htseq.txt",head=FALSE)
+SRR647674 <- read.table("SRR647674_htseq.txt",head=FALSE)
+SRR647675 <- read.table("SRR647675_htseq.txt",head=FALSE)
 head(SRR647673)
 ```
 
@@ -54,6 +56,10 @@ Great! We can perform a merge. There are ([literally](https://www.google.com/sea
 ```{r performMerge}
 countData<-data.frame(row.names =SRR647673[,1],SRR647673=SRR647673[,2],SRR647674=SRR647674[,2],SRR647675=SRR647675[,2])
 head(countData)
+tail(countData)
+## Note that all samples contain a 0 for "gene:80", so remove it
+countData<-countData[-77,]
+tail(countData)
 ```
 
 The class used by the `DESeq2` package to store the read counts is a _DESeqDataSet_ object, which extends the _Ranged-SummarizedExperiment_ class of the `SummarizedExperiment` package. This facilitates preparation steps and also downstream exploration of results. It is highly recommended to be come familiar with these object types (use `vignette(SummarizedExperiment)`), as they are used widely throughout the Bioconductor landscape in `R`.
@@ -249,5 +255,78 @@ plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + the
 ```
 
 ![](PCAPlot2.png)
+
+***
+
+# Step 4: Annotation
+
+An important step taken towards the end of an analysis pipeline is annotating your results. What we'll go through now is retrieving an annotation file and merging it with our table to produce an annotated list of genes. We'll then write that file out to our working directory. 
+
+***
+
+First, download the annotation file and save it in your working directory. You can find that file [here](http://applbio.mdibl.org/giles_annotation.txt). Now, read that file into `R`.
+
+```{r readInAnno}
+annotation <- read.table(file="giles_annotation.txt",sep="\t",head=T,stringsAsFactors=FALSE)
+head(annotation)
+```
+
+As you can see, the annotation file contains a lot of useful information. What we need to do is now combine it with the _res_ file that we created in a previous step. Let's examine that file again.
+
+```{r lookAtRes}
+head(res)
+```
+
+What we need to do is find a "key" to merge our datasets by. We do not have a unified key that stands out, so we'll need to make one. Did you notice something interesting about the rownames of _res_ and the first column of _annotation_?
+
+```{r lookAtColumns}
+rownames(res)
+annotation$Symbol
+```
+
+In order to "build" a key, we'll need to do some string manipulation. First, we'll need to make a column vector in the _res_ dataframe that contains the "gene:##" string, as leaving it as a rowname won't allow us to perform our merge.
+
+```{r prepData}
+res$Gene<-rownames(res)
+head(res)
+```
+
+We'll perform our string manipulation on the _annotation_ data. What we need to do is:
+
+  * Seperate the string that we want ("Symbol") into useful components
+  * Rename one part of that component so that it matches the correct element of the "Gene" vector in _res_.
+
+```{r stringManip}
+## Look at the annotation Gene Symbols
+annotation$Symbol
+## Split the string at the "_" character to isolate the number
+split <- strsplit(as.character(annotation$Symbol),'_') 
+## Turn this list of split strings into a dataframe
+split<- data.frame(do.call(rbind, split))
+## Append "gene:" to the front of the second column
+split[,2] <- paste("gene:",split[,2],sep="")
+## Append the second column back to the annotation data frame
+annotation$Key <- split[,2]
+head(annotation)
+```
+
+We now have our key! 
+
+__Important Note__: The only reason we could "append" the above column is that we knew that the columns were already ordered and we had done nothing to change that order. In many situations, you may need to "merge" the data in the fashion that we will do so below.
+
+***
+
+Now that we have our key, we can perform a merge.
+
+```{r makeMerge}
+anno.df<-merge(res,annotation,by.x="Gene",by.y="Key",all=T)
+head(anno.df)
+```
+
+Voila! You now have a merged data.frame with annotation information. You can write this information out to your working directory with the following command:
+
+```{r WriteOut}
+write.csv(anno.df,file="AnnotatedGeneList.csv",row.names = FALSE)
+```
 
 ***

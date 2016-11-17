@@ -51,14 +51,14 @@ vignette("DESeq2")
 
 # Step 1: Preparing Data
 
-At this point, we should have three seperate datasets: `SRR647673_htseq.txt`, `SRR647674_htseq.txt`, and `RR647675_htseq.txt`. Load these into your working environment in R, then examine one of the files with the `head()` function.
+At this point, we should have three seperate datasets: `SRR647673_htseq.txt`, `SRR647674_htseq.txt`, and `SRR647675_htseq.txt`. Load these into your working environment in R, then examine one of the files with the `head()` function.
 
-```{r Load Data, cache=TRUE}
+```{r Load Data}
 # Note: You will need to change the relative path to wherever you have downloaded these files.
 
-SRR647673 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647673_htseq.txt",head=FALSE)
-SRR647674 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647674_htseq.txt",head=FALSE)
-SRR647675 <- read.table("~/GitHub/GilesDESEQ2Guide/SRR647675_htseq.txt",head=FALSE)
+SRR647673 <- read.table("SRR647673_htseq.txt",head=FALSE)
+SRR647674 <- read.table("SRR647674_htseq.txt",head=FALSE)
+SRR647675 <- read.table("SRR647675_htseq.txt",head=FALSE)
 head(SRR647673)
 ```
 
@@ -75,6 +75,10 @@ Great! We can perform a merge. There are ([literally](https://www.google.com/sea
 ```{r performMerge}
 countData<-data.frame(row.names =SRR647673[,1],SRR647673=SRR647673[,2],SRR647674=SRR647674[,2],SRR647675=SRR647675[,2])
 head(countData)
+tail(countData)
+## Note that all samples contain a 0 for "gene:80", so remove it
+countData<-countData[-77,]
+tail(countData)
 ```
 
 The class used by the `DESeq2` package to store the read counts is a _DESeqDataSet_ object, which extends the _Ranged-SummarizedExperiment_ class of the `SummarizedExperiment` package. This facilitates preparation steps and also downstream exploration of results. It is highly recommended to be come familiar with these object types (use `vignette(SummarizedExperiment)`), as they are used widely throughout the Bioconductor landscape in `R`.
@@ -116,13 +120,13 @@ head(assay(deseq.dat2))
 
 The standard differential expression analysis steps are wrapped into a single function, `DESeq`. Results tables are generated using the function results, which extracts a results table with $\log_2$ fold changes, _p_ values and adjusted _p_ values. With no arguments to results, the results will be for the last variable in the design formula, and if this is a factor, the comparison will be the last level of this variable over the first level. Details about the comparison are printed to the console. The text, condition treated vs untreated, tells you that the estimates are of the logarithmic fold change log2(treated/untreated).
 
-```{r runDESeq2, cache=TRUE, results="hide"}
+```{r runDESeq2, results="hide"}
 dds <- DESeq(deseq.dat,quiet=TRUE)
 ```
 
 Uh oh! You'll notice from the above that `DESeq2` has thrown an error. This isn't a programmatic error, but a more fundamental one related to experimental design. `DESeq2` is configured to work explicitly with experiments that have replication, Experiments without replicates do not allow for estimation of the dispersion of counts around the expected value for each group, which is critical for differential expression analysis. If an experimental design is supplied which does not contain the necessary degrees of freedom for differential analysis, `DESeq2` will angrily provide you the above error but continue it's calculations. However, all of the samples will now be considered as replicates of a single group for the estimation of dispersion. The `??DESeq2` function will tell you: "Some overestimation of the variance may be expected, which will make that approach conservative." This is a bit of an overstatement, as shown when you examine your pairwise data.
 
-```{r checkOutData, cache=TRUE}
+```{r checkOutData}
 head(results(dds))
 summary(results(dds))
 ```
@@ -131,7 +135,7 @@ As you can see - we have found no differentially expressed genes due to our lack
 
 There is, however, a workaround for our particular case! Though we will not be able to assign _p_-values to any of our differentially expressed genes, we still have the capability of performing $\log_2$ transformations to check for absolute (and not statistical) differences in expression.
 
-```{r workAround, cache=TRUE}
+```{r workAround}
 rld <- rlogTransformation(dds)
 res <- data.frame(
    assay(rld))
@@ -146,7 +150,7 @@ It's important to understand what the `rlogTransformation` function is doing. Th
 
 Here's a good example of why the `rlog` transformation is appropriate:
 
-```{r exampleRLogPlots, cache=TRUE, results="hide"}
+```{r exampleRLogPlots, results="hide"}
 par( mfrow = c( 2, 3 ) )
 ddplot <- estimateSizeFactors(dds)
 plot(log2(counts(dds, normalized=TRUE)[,1:2] + 1),
@@ -222,7 +226,7 @@ table(results(dds)[,"padj"]<0.1)
 
 To see the standard (or expected) output of the `plotMA` function, we can use the _airway_ dataset.
 
-```{r makeExample, cache=TRUE}
+```{r makeExample,cache=TRUE}
 library("airway")
 data("airway")
 se <- airway
@@ -235,7 +239,7 @@ plotMA(rs,main="MA Plot of Airway Data",ylim=c(-4,4))
 
 Perhaps you want to highlight and label a random point on your plot?
 
-```{r makeLabel, cache=TRUE}
+```{r makeLabel}
 plotMA(rs, main="MA Plot of Airway Data",ylim=c(-5,5))
 topGene <- rownames(rs)[which.min(rs$padj)]
 with(rs[topGene, ], {
@@ -250,15 +254,92 @@ with(rs[topGene, ], {
 
 Another way to visualize sample-to-sample distances is a principal components analysis (PCA). Principal component analysis is a powerful tool from mathematical statistics: it underpins a lot of your daily experinece with predictive algorithms (like Netflix). A really good explanation of it is from [this](http://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues) question on Stack Exchange. Basically: data points are projected onto the 2D plane such that they spread out in the two directions that explain most of the differences. The x-axis is the direction that separates the data points the most. The values of the samples in this direction are written PC1. The y-axis is a direction that separates the data the second most. The values of the samples in this direction are written PC2. The percent of the total variance that is contained in the direction is printed in the axis label. Note that these percentages do not add to 100%, because there are more dimensions that contain the remaining variance (although each of these remaining dimensions will explain less than the two that we see).
 
-```{r makePCA, cache=TRUE}
+```{r makePCA}
 require(ggplot2,ggthemes)
 plotPCA(rld) + ggtitle("PCA Plot of rLog Data") + theme_few()
 ```
 
 With our __airway__ dataset:
 
-```{r makePCA2, cache=TRUE}
+```{r makePCA2}
 plotPCA(exrl,intgroup=c("dex","cell"))+ ggtitle("PCA Plot of Airway Data") + theme_few()
 ```
 
+***
 
+# Step 4: Annotation
+
+An important step taken towards the end of an analysis pipeline is annotating your results. What we'll go through now is retrieving an annotation file and merging it with our table to produce an annotated list of genes. We'll then write that file out to our working directory. 
+
+***
+
+First, download the annotation file and save it in your working directory. You can find that file [here](http://applbio.mdibl.org/giles_annotation.txt). Now, read that file into `R`.
+
+```{r readInAnno}
+annotation <- read.table(file="giles_annotation.txt",sep="\t",head=T,stringsAsFactors=FALSE)
+head(annotation)
+```
+
+As you can see, the annotation file contains a lot of useful information. What we need to do is now combine it with the _res_ file that we created in a previous step. Let's examine that file again.
+
+```{r lookAtRes}
+head(res)
+```
+
+What we need to do is find a "key" to merge our datasets by. We do not have a unified key that stands out, so we'll need to make one. Did you notice something interesting about the rownames of _res_ and the first column of _annotation_?
+
+```{r lookAtColumns}
+rownames(res)
+annotation$Symbol
+```
+
+In order to "build" a key, we'll need to do some string manipulation. First, we'll need to make a column vector in the _res_ dataframe that contains the "gene:##" string, as leaving it as a rowname won't allow us to perform our merge.
+
+```{r prepData}
+res$Gene<-rownames(res)
+head(res)
+```
+
+We'll perform our string manipulation on the _annotation_ data. What we need to do is:
+
+  * Seperate the string that we want ("Symbol") into useful components
+  * Rename one part of that component so that it matches the correct element of the "Gene" vector in _res_.
+
+```{r stringManip}
+## Look at the annotation Gene Symbols
+annotation$Symbol
+## Split the string at the "_" character to isolate the number
+split <- strsplit(as.character(annotation$Symbol),'_') 
+## Turn this list of split strings into a dataframe
+split<- data.frame(do.call(rbind, split))
+## Append "gene:" to the front of the second column
+split[,2] <- paste("gene:",split[,2],sep="")
+## Append the second column back to the annotation data frame
+annotation$Key <- split[,2]
+head(annotation)
+```
+
+We now have our key! 
+
+__Important Note__: The only reason we could "append" the above column is that we knew that the columns were already ordered and we had done nothing to change that order. In many situations, you may need to "merge" the data in the fashion that we will do so below.
+
+***
+
+Now that we have our key, we can perform a merge.
+
+```{r makeMerge}
+anno.df<-merge(res,annotation,by.x="Gene",by.y="Key",all=T)
+head(anno.df)
+```
+
+Voila! You now have a merged data.frame with annotation information. You can write this information out to your working directory with the following command:
+
+```{r WriteOut}
+write.csv(anno.df,file="AnnotatedGeneList.csv",row.names = FALSE)
+```
+
+***
+
+```{r session}
+sessionInfo()
+```
